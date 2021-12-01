@@ -1,0 +1,111 @@
+import pandas as pd
+import numpy as np
+from collections import Counter
+from datetime import datetime
+import matplotlib.pyplot as plt
+import matplotlib.animation as ani
+import seaborn as sns
+from matplotlib import colors
+from matplotlib import cm
+%matplotlib notebook
+
+# Read in file and list of stopwords
+# Data set available at: https://www.kaggle.com/therohk/million-headlines
+headlines = pd.read_csv('abcnews-date-text.csv',dtype={'publish_date':str})
+stop_words = pd.read_csv('stopwords.txt',header=None)
+stop_words = set(stop_words[0])
+
+#Keep year and month of headlines
+headlines['publish_date'] = headlines['publish_date'].str[0:6]
+
+# Split to list and remove stop words
+headlines['headline_text'] = headlines['headline_text'].str.split()
+headlines['headline_text'] = headlines['headline_text'].apply(lambda row: [word for word in row if word not in stop_words])
+
+#group by month and count frequency
+headlines = headlines.groupby('publish_date',as_index=False).sum()
+headlines['headline_text'] = headlines['headline_text'].apply(lambda x: Counter(x))
+
+# get frequency for headlines for 6 month intervals, with 1 month either side for smoothing
+headlines['year_terms'] = headlines['headline_text']
+for i in range(0,len(headlines)):
+    if (i+1)%6==0:
+        if (i<6):
+            headlines['year_terms'][i] = (headlines['headline_text'][i+1]+headlines['headline_text'][i]+headlines['headline_text'][i-1]+headlines['headline_text'][i-2]+headlines['headline_text'][i-3]+headlines['headline_text'][i-4]+headlines['headline_text'][i-5])
+        else:
+            headlines['year_terms'][i] = (headlines['headline_text'][i+1]+headlines['headline_text'][i]+headlines['headline_text'][i-1]+headlines['headline_text'][i-2]+headlines['headline_text'][i-3]+headlines['headline_text'][i-4]+headlines['headline_text'][i-5]+headlines['headline_text'][i-6])
+        headlines['year_terms'][i-1] = headlines['year_terms'][i]
+        headlines['year_terms'][i-2] = headlines['year_terms'][i]
+        headlines['year_terms'][i-3] = headlines['year_terms'][i]
+        headlines['year_terms'][i-4] = headlines['year_terms'][i]
+        headlines['year_terms'][i-5] = headlines['year_terms'][i]
+
+# Get top 20 terms for each month and each longer period ("year")
+headlines['sorted_month'] = headlines['headline_text'].apply(lambda x: sorted(x,key=lambda k: x[k], reverse=True))
+headlines['sorted_month'] = headlines['sorted_month'].apply(lambda x: x[0:20])
+headlines['sorted_year'] = headlines['year_terms'].apply(lambda x: sorted(x,key=lambda k: x[k], reverse=True))
+headlines['sorted_year'] = headlines['sorted_year'].apply(lambda x: x[0:20])
+
+# Make a dictionary that looks like {(term1: year_freq, month_freq_RANK), (term2: ye....)} for each month
+def freq_tuple(month,year):
+    terms = {}
+    for term in year:
+        if term in month:
+            m = 20 - month.index(term)
+        else:
+            m = 0
+        terms.update({term:m})
+    return terms
+
+headlines['terms'] = headlines.apply(lambda x: freq_tuple(x.sorted_month, x.year_terms),axis=1)
+
+# df with date, word (in order of year freq), rank for each top 20 word each 4 months
+df = pd.DataFrame({'month':headlines['publish_date'].iloc[row], 'term':x, 'colour': headlines['terms'][row][x]} for row in range(len(headlines)) for x in headlines['sorted_year'].iloc[row][0:17])
+
+# Change date format for display
+date = df['month'].apply(lambda x: datetime.strptime(x,'%Y%m'))
+df['month'] = date.apply(lambda x: x.strftime('%b %Y'))
+
+# Set coordinates for words to display on graph
+coords = {'x':[0,1,1,-1,-1,0,1.5,2.5,3,2.5,1.5,0,-1.5,-2.5,-3,-2.5,-1.5],'y':[0,1,-1,-1,1,3.5,2.5,1.5,0,-1.5,-2.5,-3.5,-2.5,-1.5,0,1.5,2.5]}
+position = pd.DataFrame(coords)
+
+# Make discrete colour array from colour map
+oranges = cm.get_cmap('Oranges', 20)
+
+# Plot graph
+fig, ax_term = plt.subplots(1, figsize=(10,10))
+ax_term.set_facecolor('gainsboro')
+
+plt.scatter(x=position.x, y=position.y, marker='')
+
+def buildwordmap(i=int):  
+    plt.cla()
+    #remove ticks and numbers from axes
+    ax_term.set_xticklabels([])
+    ax_term.set_xticks([])
+    ax_term.set_yticklabels([])
+    ax_term.set_yticks([])
+    ax_term.set_xlim(-3.7,3.7)
+    plt.scatter(x=position.x, y=position.y, marker='')
+    # Heading text
+    plt.text(-3.3,4,'The most common words in ABC headlines - ',weight='light',size=25,fontname='Perpetua',ha='left')
+    plt.text(3.3,4,df.month[i*17],weight='light',size=25,fontname='Perpetua',ha='right')
+    # Watermark
+    plt.text(3.5,-3.8,'github.com/HelenBarlow',weight='light',size=15,style='italic',fontname='Perpetua',ha='right')
+    for line in range(0,position.shape[0]):
+        plt.text(
+            position.x[line]/1.2, 
+            position.y[line]/1.2, 
+            df.term[line+i*17],
+            color=oranges(df.colour[line+i*17]),
+            size=25+(df.colour[line+i*17])*1.5, 
+            fontname='Gabriola',
+            ha = 'center', 
+            va = 'center'
+        )
+    return line
+ 
+animation = ani.FuncAnimation(fig, buildwordmap, frames=210, interval=300, save_count=210)
+
+plt.show()
