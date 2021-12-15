@@ -15,18 +15,18 @@ headlines = pd.read_csv('abcnews-date-text.csv',dtype={'publish_date':str})
 stop_words = pd.read_csv('stopwords.txt',header=None)
 stop_words = set(stop_words[0])
 
-#Keep year and month of headlines
+# Keep year and month of headlines
 headlines['publish_date'] = headlines['publish_date'].str[0:6]
 
 # Split to list and remove stop words
 headlines['headline_text'] = headlines['headline_text'].str.split()
 headlines['headline_text'] = headlines['headline_text'].apply(lambda row: [word for word in row if word not in stop_words])
 
-#group by month and count frequency
+# Group by month and count frequency
 headlines = headlines.groupby('publish_date',as_index=False).sum()
 headlines['headline_text'] = headlines['headline_text'].apply(lambda x: Counter(x))
 
-# get frequency for headlines for 6 month intervals, with 1 month either side for smoothing
+# Get frequency for headlines for 6 month intervals, with 1 month either side for smoothing
 headlines['year_terms'] = headlines['headline_text']
 for i in range(0,len(headlines)):
     if (i+1)%6==0:
@@ -46,7 +46,7 @@ headlines['sorted_month'] = headlines['sorted_month'].apply(lambda x: x[0:20])
 headlines['sorted_year'] = headlines['year_terms'].apply(lambda x: sorted(x,key=lambda k: x[k], reverse=True))
 headlines['sorted_year'] = headlines['sorted_year'].apply(lambda x: x[0:20])
 
-# Make a dictionary that looks like {(term1: year_freq, month_freq_RANK), (term2: ye....)} for each month
+# Make a dictionary that looks like {(term1: month_freq_RANK), (term2: mon...)} - most frequent will have rank 20
 def freq_tuple(month,year):
     terms = {}
     for term in year:
